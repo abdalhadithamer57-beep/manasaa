@@ -2,6 +2,11 @@ import streamlit as st
 from groq import Groq
 from PyPDF2 import PdfReader
 import os
+from dotenv import load_dotenv
+
+# تحميل المتغيرات من ملف .env (للتشغيل المحلي أو على خادم VPS)
+# ملاحظة: يجب إنشاء ملف باسم .env ووضع GROQ_API_KEY=your_key_here بداخله
+load_dotenv()
 
 # محاولة استيراد المكتبات المتقدمة للمعالجة الذكية للنصوص (RAG)
 try:
@@ -12,11 +17,17 @@ try:
 except Exception:
     RAG_AVAILABLE = False
 
-# 1. إعداد مفتاح الـ API بشكل آمن للنشر
+# 1. إعداد مفتاح الـ API بشكل آمن
+# الأولوية لـ Streamlit Secrets (للنشر السحابي) ثم لبيئة النظام (للتشغيل المحلي)
 if "GROQ_API_KEY" in st.secrets:
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 else:
-    st.warning("⚙️ نظام الأمان: يرجى إضافة GROQ_API_KEY في إعدادات Secrets بالمنصة.")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# تنبيه للمستخدم في حال عدم العثور على المفتاح
+if not GROQ_API_KEY:
+    st.error("⚠️ خطأ في المصادقة: لم يتم العثور على مفتاح API الخاص بـ Groq.")
+    st.info("لحل المشكلة: أضف المفتاح في إعدادات Secrets في Streamlit أو في ملف .env محلياً باسم GROQ_API_KEY.")
     st.stop()
 
 # 2. إعدادات الصفحة الأساسية
@@ -47,8 +58,13 @@ st.markdown(f"""
         border-radius: 25px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.1);
         backdrop-filter: blur(12px);
-        margin: 2rem auto;
+        margin: 1rem auto;
         max-width: 550px; 
+    }}
+    .logo-wrapper {{
+        display: flex;
+        justify-content: center;
+        margin-bottom: -20px;
     }}
     .chat-bubble {{
         padding: 20px;
@@ -70,8 +86,15 @@ if "user_profile" not in st.session_state:
 
 # --- واجهة تسجيل الدخول ---
 if st.session_state.user_profile is None:
-    st.markdown("<h1 style='text-align:center; font-size:4rem;'>🧠</h1>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align:center; color: #1e3a8a;'>المنصة الافتراضية للاستشارات النفسية</h1>", unsafe_allow_html=True)
+    # عرض الشعار في المنتصف
+    col_l, col_m, col_r = st.columns([1, 1, 1])
+    with col_m:
+        if os.path.exists(LOGO_PATH):
+            st.image(LOGO_PATH, use_container_width=True)
+        else:
+            st.markdown("<h1 style='text-align:center; font-size:5rem;'>🧠</h1>", unsafe_allow_html=True)
+    
+    st.markdown("<h2 style='text-align:center; color: #1e3a8a; margin-top: -10px;'>المنصة الافتراضية للاستشارات النفسية</h2>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
     with col2:
@@ -107,7 +130,6 @@ def get_knowledge_context(user_query=""):
     if not all_text:
         return "لا توجد ملفات في مجلد docs."
 
-    # إذا كانت المكتبات المتقدمة تعمل، نستخدم البحث الذكي
     if RAG_AVAILABLE and user_query:
         try:
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -117,14 +139,16 @@ def get_knowledge_context(user_query=""):
             relevant_docs = vector_store.similarity_search(user_query, k=4)
             return "\n".join([doc.page_content for doc in relevant_docs])
         except Exception:
-            pass # ننتقل للبحث البسيط في حال الفشل
+            pass 
             
-    # البحث البسيط (Fallback): نأخذ أول 10 آلاف حرف لضمان وجود سياق
     return all_text[:12000]
 
 # --- واجهة المحادثة ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# عرض اسم المستخدم في الأعلى بشكل هادئ
+st.markdown(f"### مرحباً {st.session_state.user_profile['name']} | جلسة استشارية آمنة")
 
 for message in st.session_state.messages:
     role_class = "user-bubble" if message["role"] == "user" else "assistant-bubble"
@@ -158,7 +182,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
             completion = client.chat.completions.create(
                 messages=api_messages,
                 model="llama-3.3-70b-versatile",
-                temperature=0.3 # تقليل العشوائية لضمان الالتزام بالنص
+                temperature=0.3 
             )
             
             response = completion.choices[0].message.content
