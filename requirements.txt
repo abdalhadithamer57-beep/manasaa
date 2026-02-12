@@ -1,7 +1,9 @@
 streamlit
 groq
 PyPDF2
+python-dotenv
 langchain
 langchain-community
+langchain-groq
 sentence-transformers
 faiss-cpu
